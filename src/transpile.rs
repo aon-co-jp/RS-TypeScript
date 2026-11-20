@@ -231,6 +231,8 @@ pub fn strip_type_annotations(tokens: &[Token]) -> String {
     // 型注釈(`let {a}: T = o;`)の判定に使う。宣言ごとに (宣言の深さ, 初期化子を見たか)。
     let mut depth_all: i32 = 0;
     let mut decl_stack: Vec<(i32, bool)> = Vec::new();
+    // いま一番内側の括弧が `(` か(オブジェクトリテラル `{ n: x }` の中は `(` ではないので、`:` を引数の型注釈と取り違えない)
+    let mut open_stack: Vec<char> = Vec::new();
     let mut i = 0usize;
 
     while i < tokens.len() {
@@ -255,9 +257,13 @@ pub fn strip_type_annotations(tokens: &[Token]) -> String {
 
         if let Token::Punctuator(p) = tok {
             match p.as_str() {
-                "(" | "[" | "{" => depth_all += 1,
+                "(" | "[" | "{" => {
+                    depth_all += 1;
+                    open_stack.push(p.chars().next().unwrap_or('('));
+                }
                 ")" | "]" | "}" => {
                     depth_all -= 1;
+                    open_stack.pop();
                     while matches!(decl_stack.last(), Some(&(d, _)) if d > depth_all) {
                         decl_stack.pop();
                     }
@@ -326,10 +332,12 @@ pub fn strip_type_annotations(tokens: &[Token]) -> String {
                 let prev3 = if sig_history.len() >= 3 { Some(&tokens[sig_history[sig_history.len() - 3]]) } else { None };
                 let is_rest_param = matches!(prev, Some(Token::Identifier(_)))
                     && paren_depth >= 1
+                    && open_stack.last() == Some(&'(')
                     && matches!(prev2, Some(Token::Punctuator(pp)) if pp == "...")
                     && matches!(prev3, Some(Token::Punctuator(pp)) if pp == "(" || pp == ",");
                 let is_param = (matches!(prev, Some(Token::Identifier(_)))
                     && paren_depth >= 1
+                    && open_stack.last() == Some(&'(')
                     && matches!(prev2, Some(Token::Punctuator(pp)) if pp == "(" || pp == ","))
                     || is_rest_param;
                 let is_return_type = matches!(prev, Some(Token::Punctuator(pp)) if pp == ")");
@@ -410,6 +418,13 @@ mod tests {
     fn leaves_plain_javascript_untouched() {
         let js = "function add(a, b) { return a + b; }";
         assert_eq!(transpile(js), js);
+    }
+
+    #[test]
+    fn keeps_object_literal_props_inside_call_args() {
+        assert_eq!(transpile("f({ name: \"ts\", n: x + 1 });"), "f({ name: \"ts\", n: x + 1 });");
+        assert_eq!(transpile("f(a, { k: v, n: 1 })"), "f(a, { k: v, n: 1 })");
+        assert_eq!(transpile("function g(a: number, b: string) {}"), "function g(a, b) {}");
     }
 
     #[test]
