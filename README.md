@@ -1,3 +1,5 @@
+> Latest translations / 翻訳の最新版: [0-LATEST-TRANSLATIONS.md](0-LATEST-TRANSLATIONS.md)
+
 # rtypescript
 
 TypeScript相当を一から開発するプロジェクト。`RHTML5`/`RCSS3`/`RTypeScript`/`RBootStrap`構想の一部。
